@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @gasha/web dev",
     "dev:party": "pnpm --filter @gasha/party dev",
-    "dev:all": "pnpm run --parallel dev dev:party",
+    "dev:all": "concurrently \"pnpm dev\" \"pnpm dev:party\"",
     "build": "pnpm --filter @gasha/web build",
     "build:party": "pnpm --filter @gasha/party build",
     "lint": "pnpm -r lint",
@@ -18,5 +18,8 @@
   "packageManager": "pnpm@9.15.1",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }
