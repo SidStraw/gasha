@@ -1,0 +1,22 @@
+{
+  "name": "gasha",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gacha Streamer Pool - 3D 互動式直播抽獎工具",
+  "scripts": {
+    "dev": "pnpm --filter @gasha/web dev",
+    "dev:party": "pnpm --filter @gasha/party dev",
+    "dev:all": "pnpm run --parallel dev dev:party",
+    "build": "pnpm --filter @gasha/web build",
+    "build:party": "pnpm --filter @gasha/party build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "keywords": ["gacha", "streamer", "obs", "3d", "physics"],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.1",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

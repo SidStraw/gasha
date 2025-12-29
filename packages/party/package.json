@@ -1,0 +1,18 @@
+{
+  "name": "@gasha/party",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "partykit dev",
+    "deploy": "partykit deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gasha/shared": "workspace:*",
+    "partykit": "^0.0.111"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

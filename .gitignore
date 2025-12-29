@@ -9,6 +9,7 @@ node_modules/
 # Production
 /build
 /dist
+.partykit/
 
 # Misc
 .DS_Store
