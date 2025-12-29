@@ -92,20 +92,26 @@ export function PhysicsPool({ items, selectedId, phase, onPhaseChange }: Physics
       style={{ background: 'transparent' }}
     >
       {/* 燈光 */}
-      <ambientLight intensity={0.5} />
+      <ambientLight intensity={0.8} />
       <directionalLight
         position={[10, 20, 10]}
-        intensity={1}
+        intensity={1.5}
         castShadow
         shadow-mapSize={[2048, 2048]}
       />
       <directionalLight
         position={[-10, 10, -10]}
-        intensity={0.3}
+        intensity={0.5}
       />
 
       {/* 環境光 */}
       <Environment preset="studio" />
+      
+      {/* 調試用地面 */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow>
+        <planeGeometry args={[30, 30]} />
+        <meshStandardMaterial color="#333333" />
+      </mesh>
 
       {/* 物理場景 */}
       <PhysicsScene 
@@ -119,7 +125,7 @@ export function PhysicsPool({ items, selectedId, phase, onPhaseChange }: Physics
       <OrbitControls 
         enablePan={false}
         minDistance={5}
-        maxDistance={30}
+        maxDistance={40}
         target={[0, PHYSICS.CONTAINER.HEIGHT / 2, 0]}
       />
     </Canvas>

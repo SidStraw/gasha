@@ -35,7 +35,8 @@ export const GachaBalls = forwardRef<GachaBallsRef, GachaBallsProps>(
 
     // 產生初始位置 (從頂部隨機散落)
     const instances = useMemo(() => {
-      return items.map((_, index) => {
+      console.log('[GachaBalls] Creating instances for', items.length, 'items')
+      return items.map((item, index) => {
         const row = Math.floor(index / 10)
         const col = index % 10
         const x = (col - 4.5) * (PHYSICS.BALL.RADIUS * 2.5)
@@ -43,27 +44,28 @@ export const GachaBalls = forwardRef<GachaBallsRef, GachaBallsProps>(
         const y = PHYSICS.CONTAINER.HEIGHT + 2 + Math.random() * 3
 
         return {
-          key: `ball-${index}`,
+          key: item.id,
           position: [x, y, z] as [number, number, number],
           rotation: [0, 0, 0] as [number, number, number],
         }
       })
-    }, [items.length])
+    }, [items])
 
     // 更新實例顏色
     useEffect(() => {
-      if (!meshRef.current) return
+      if (!meshRef.current || items.length === 0) return
 
       const color = new THREE.Color()
       items.forEach((item, i) => {
         color.set(item.color)
         meshRef.current!.setColorAt(i, color)
       })
-      meshRef.current.instanceColor!.needsUpdate = true
+      if (meshRef.current.instanceColor) {
+        meshRef.current.instanceColor.needsUpdate = true
+      }
     }, [items])
 
-    // 選中球體時降低其他球的透明度 (未來可擴展)
-    // useFrame(() => { ... })
+    console.log('[GachaBalls] Rendering with', items.length, 'items')
 
     if (items.length === 0) return null
 
@@ -83,6 +85,7 @@ export const GachaBalls = forwardRef<GachaBallsRef, GachaBallsProps>(
         >
           <sphereGeometry args={[PHYSICS.BALL.RADIUS, 32, 32]} />
           <meshStandardMaterial 
+            color="#ff6b6b"
             metalness={0.3}
             roughness={0.4}
           />

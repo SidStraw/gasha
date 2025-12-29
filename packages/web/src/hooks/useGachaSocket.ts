@@ -23,7 +23,7 @@ export function useGachaSocket(roomId: string) {
   const socket = usePartySocket({
     host: PARTYKIT_HOST,
     room: roomId,
-    party: 'gasha-party',
+    party: 'main',
     
     onOpen() {
       console.log('[Socket] Connected to room:', roomId)

@@ -48,8 +48,8 @@ export const ANIMATION = {
   // 攝影機運鏡
   CAMERA: {
     ZOOM_DURATION_MS: 1000,
-    DEFAULT_POSITION: [0, 5, 15] as const,
-    DEFAULT_LOOK_AT: [0, 0, 0] as const,
+    DEFAULT_POSITION: [0, 8, 20] as const,
+    DEFAULT_LOOK_AT: [0, 5, 0] as const,
   },
 } as const;
 
