@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import Matter from 'matter-js';
 import type { GachaItem } from '@gasha/shared';
 
 interface GachaSceneProps {
   items: GachaItem[];
-  onBallClick: (ballId: string, color: string, name: string) => void;
+  onBallClick: (item: GachaItem) => void;
   triggerShake: number;
   triggerReset: number;
 }
@@ -20,6 +20,13 @@ const GachaScene: React.FC<GachaSceneProps> = ({
   const renderRef = useRef<Matter.Render | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
   const ballsRef = useRef<Matter.Body[]>([]);
+  const itemsMapRef = useRef<Map<string, GachaItem>>(new Map());
+
+  // 更新 items map
+  useEffect(() => {
+    itemsMapRef.current.clear();
+    items.forEach(item => itemsMapRef.current.set(item.id, item));
+  }, [items]);
 
   // Initialize Physics World
   useEffect(() => {
@@ -54,49 +61,18 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     });
     renderRef.current = render;
 
-    // Walls (Invisible boundaries) - 完全封閉的容器
+    // Walls
     const wallThickness = 100;
     const wallOptions = { 
       isStatic: true, 
       render: { visible: false },
-      restitution: 0.6  // 降低彈性避免過度彈跳
+      restitution: 0.5
     };
     
-    // 地板 - 在畫面底部
-    const ground = Bodies.rectangle(
-      width / 2, 
-      height + wallThickness / 2, 
-      width + wallThickness * 2,  // 加寬確保角落密封
-      wallThickness, 
-      wallOptions
-    );
-    
-    // 左牆 - 從天花板到地板的完整高度
-    const leftWall = Bodies.rectangle(
-      -wallThickness / 2, 
-      height / 2, 
-      wallThickness, 
-      height * 3,  // 足夠高度覆蓋上方空間
-      wallOptions
-    );
-    
-    // 右牆 - 從天花板到地板的完整高度
-    const rightWall = Bodies.rectangle(
-      width + wallThickness / 2, 
-      height / 2, 
-      wallThickness, 
-      height * 3,  // 足夠高度覆蓋上方空間
-      wallOptions
-    );
-    
-    // 天花板 - 在畫面上方適當位置，防止球飛出
-    const ceiling = Bodies.rectangle(
-      width / 2, 
-      -height - wallThickness / 2,  // 上方 1 個螢幕高度處
-      width + wallThickness * 2,  // 加寬確保角落密封
-      wallThickness, 
-      wallOptions
-    ); 
+    const ground = Bodies.rectangle(width / 2, height + wallThickness / 2 - 20, width + wallThickness * 2, wallThickness, wallOptions);
+    const leftWall = Bodies.rectangle(-wallThickness / 2, height / 2, wallThickness, height * 3, wallOptions);
+    const rightWall = Bodies.rectangle(width + wallThickness / 2, height / 2, wallThickness, height * 3, wallOptions);
+    const ceiling = Bodies.rectangle(width / 2, -height - wallThickness / 2, width + wallThickness * 2, wallThickness, wallOptions);
 
     Composite.add(engine.world, [ground, leftWall, rightWall, ceiling]);
 
@@ -126,11 +102,12 @@ const GachaScene: React.FC<GachaSceneProps> = ({
         const endPoint = event.mouse.position;
         const distance = Vector.magnitude(Vector.sub(endPoint, startPoint));
         
-        if (distance < 5) {
-          const color = (clickedBody.render as { customColor?: string }).customColor || '#000000';
-          const name = (clickedBody as { customName?: string }).customName || 'Unknown';
+        if (distance < 10) {
           const id = (clickedBody as { customId?: string }).customId || '';
-          onBallClick(id, color, name);
+          const item = itemsMapRef.current.get(id);
+          if (item) {
+            onBallClick(item);
+          }
         }
       }
       clickedBody = null;
@@ -138,7 +115,7 @@ const GachaScene: React.FC<GachaSceneProps> = ({
 
     Composite.add(engine.world, mouseConstraint);
 
-    // Custom Rendering - Gashapon Ball Style
+    // GACHAGO Style Rendering
     Events.on(render, 'afterRender', () => {
       const context = render.context;
       const bodies = Composite.allBodies(engine.world);
@@ -146,53 +123,77 @@ const GachaScene: React.FC<GachaSceneProps> = ({
       bodies.forEach((body) => {
         if (body.label === 'Ball') {
           const { x, y } = body.position;
-          const radius = (body.circleRadius || 25); 
+          const radius = (body.circleRadius || 40); 
           const angle = body.angle;
-          const color = (body.render as { customColor?: string }).customColor || '#FF6B6B';
+          const color = (body.render as { customColor?: string }).customColor || '#e05a47';
 
           context.save();
-          context.translate(x, y);
-          context.rotate(angle);
+          
+          // 繪製橢圓陰影 (GACHAGO 風格)
+          context.beginPath();
+          context.fillStyle = 'rgba(200, 180, 160, 0.4)';
+          context.ellipse(x, y + radius * 0.9, radius * 0.8, radius * 0.25, 0, 0, Math.PI * 2);
+          context.fill();
 
-          // Draw White Bottom Half
+          context.translate(x, y);
+          
+          // 球體主體 - 使用漸層模擬 3D 滾動效果
+          // 根據角度計算分界線位置
+          const splitAngle = angle % (Math.PI * 2);
+          
+          // 繪製完整圓形背景 (白色)
           context.beginPath();
           context.fillStyle = '#FFFFFF';
-          context.arc(0, 0, radius, 0, Math.PI, false);
+          context.arc(0, 0, radius, 0, Math.PI * 2);
           context.fill();
-          context.closePath();
-
-          // Draw Colored Top Half
+          
+          // 繪製彩色部分 (下半，根據旋轉角度)
+          context.save();
+          context.rotate(splitAngle);
+          
+          // 下半彩色
           context.beginPath();
           context.fillStyle = color;
-          context.arc(0, 0, radius, Math.PI, 0, false);
+          context.arc(0, 0, radius - 2, 0, Math.PI, false);
           context.fill();
-          context.closePath();
+          
+          context.restore();
 
-          // Draw Outline
+          // 繪製邊框 (粗棕色)
           context.beginPath();
-          context.strokeStyle = '#4A3B32'; 
-          context.lineWidth = 4;
-          context.arc(0, 0, radius, 0, 2 * Math.PI);
+          context.strokeStyle = '#725349';
+          context.lineWidth = Math.max(4, radius * 0.08);
+          context.arc(0, 0, radius, 0, Math.PI * 2);
           context.stroke();
           
-          // Draw Highlight
+          // 繪製中線 (分隔上下半球)
+          context.save();
+          context.rotate(splitAngle);
           context.beginPath();
-          context.fillStyle = 'rgba(255, 255, 255, 0.4)';
-          context.ellipse(-radius * 0.3, -radius * 0.3, radius * 0.3, radius * 0.15, -Math.PI / 4, 0, 2 * Math.PI);
-          context.fill();
+          context.strokeStyle = '#725349';
+          context.lineWidth = Math.max(2, radius * 0.04);
+          context.moveTo(-radius, 0);
+          context.lineTo(radius, 0);
+          context.stroke();
+          context.restore();
 
           context.restore();
         }
       });
     });
 
-    // 邊界檢查 - 防止球飛出畫面外
+    // 持續緩慢滾動效果
     Events.on(engine, 'afterUpdate', () => {
       ballsRef.current.forEach(body => {
+        // 如果球幾乎靜止，施加微小的角速度
+        const angularVelocity = body.angularVelocity;
+        if (Math.abs(angularVelocity) < 0.01) {
+          Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.02);
+        }
+        
+        // 邊界檢查
         const pos = body.position;
         const margin = 100;
-        
-        // 如果球超出邊界太遠，重置到畫面中央上方
         if (pos.x < -margin || pos.x > width + margin || 
             pos.y < -height * 2 || pos.y > height + margin) {
           Matter.Body.setPosition(body, {
@@ -200,7 +201,6 @@ const GachaScene: React.FC<GachaSceneProps> = ({
             y: -50
           });
           Matter.Body.setVelocity(body, { x: 0, y: 0 });
-          Matter.Body.setAngularVelocity(body, 0);
         }
       });
     });
@@ -232,50 +232,51 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     addBallsFromItems(engine, items, sceneRef.current.clientWidth, sceneRef.current.clientHeight);
   }, [items]);
 
-  const addBallsFromItems = (engine: Matter.Engine, currentItems: GachaItem[], width: number, height: number) => {
+  const addBallsFromItems = useCallback((engine: Matter.Engine, currentItems: GachaItem[], width: number, height: number) => {
     const newBalls: Matter.Body[] = [];
-    const ballRadius = Math.min(width, height) * 0.08; 
+    // 較大的球體
+    const ballRadius = Math.min(width, height) * 0.1;
 
     currentItems.forEach((item, index) => {
-      // 在天花板下方生成，錯開時間避免重疊
       const x = Math.random() * (width - ballRadius * 4) + ballRadius * 2;
-      const y = -ballRadius * 2 - (index * ballRadius * 0.5) - Math.random() * height * 0.3; 
+      const y = -ballRadius * 2 - (index * ballRadius * 0.8) - Math.random() * height * 0.2;
       
       const ball = Matter.Bodies.circle(x, y, ballRadius, {
-        restitution: 0.7,  // 降低彈性
-        friction: 0.1,
-        frictionAir: 0.005,  // 增加空氣阻力
+        restitution: 0.5,
+        friction: 0.05,
+        frictionAir: 0.002,
         label: 'Ball',
-        render: {
-          visible: false,
-        }
+        render: { visible: false }
       });
+      
       (ball.render as { customColor?: string }).customColor = item.color;
-      (ball as { customName?: string }).customName = item.label;
       (ball as { customId?: string }).customId = item.id;
+      
+      // 初始角速度
+      Matter.Body.setAngularVelocity(ball, (Math.random() - 0.5) * 0.1);
       
       newBalls.push(ball);
     });
 
     ballsRef.current = newBalls;
     Matter.Composite.add(engine.world, newBalls);
-  };
+  }, []);
 
-  // React to Shake Trigger
+  // Shake
   useEffect(() => {
     if (triggerShake === 0 || !engineRef.current) return;
     
     ballsRef.current.forEach(body => {
-      const forceMagnitude = 0.03 * body.mass;  // 降低力道
+      const forceMagnitude = 0.05 * body.mass;
       Matter.Body.applyForce(body, body.position, {
         x: (Math.random() - 0.5) * forceMagnitude * 2,
-        y: -forceMagnitude * 1.5  // 降低向上力道
+        y: -forceMagnitude * 2
       });
-      Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.3);
+      Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.5);
     });
   }, [triggerShake]);
 
-  // React to Reset
+  // Reset
   useEffect(() => {
     if (triggerReset === 0 || !engineRef.current || !sceneRef.current) return;
     const engine = engineRef.current;
