@@ -54,16 +54,49 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     });
     renderRef.current = render;
 
-    // Walls (Invisible boundaries)
+    // Walls (Invisible boundaries) - 完全封閉的容器
+    const wallThickness = 100;
     const wallOptions = { 
       isStatic: true, 
       render: { visible: false },
-      restitution: 0.8 
+      restitution: 0.6  // 降低彈性避免過度彈跳
     };
-    const ground = Bodies.rectangle(width / 2, height + 50, width, 100, wallOptions);
-    const leftWall = Bodies.rectangle(-50, height / 2, 100, height, wallOptions);
-    const rightWall = Bodies.rectangle(width + 50, height / 2, 100, height, wallOptions);
-    const ceiling = Bodies.rectangle(width / 2, -500, width, 100, wallOptions); 
+    
+    // 地板 - 在畫面底部
+    const ground = Bodies.rectangle(
+      width / 2, 
+      height + wallThickness / 2, 
+      width + wallThickness * 2,  // 加寬確保角落密封
+      wallThickness, 
+      wallOptions
+    );
+    
+    // 左牆 - 從天花板到地板的完整高度
+    const leftWall = Bodies.rectangle(
+      -wallThickness / 2, 
+      height / 2, 
+      wallThickness, 
+      height * 3,  // 足夠高度覆蓋上方空間
+      wallOptions
+    );
+    
+    // 右牆 - 從天花板到地板的完整高度
+    const rightWall = Bodies.rectangle(
+      width + wallThickness / 2, 
+      height / 2, 
+      wallThickness, 
+      height * 3,  // 足夠高度覆蓋上方空間
+      wallOptions
+    );
+    
+    // 天花板 - 在畫面上方適當位置，防止球飛出
+    const ceiling = Bodies.rectangle(
+      width / 2, 
+      -height - wallThickness / 2,  // 上方 1 個螢幕高度處
+      width + wallThickness * 2,  // 加寬確保角落密封
+      wallThickness, 
+      wallOptions
+    ); 
 
     Composite.add(engine.world, [ground, leftWall, rightWall, ceiling]);
 
@@ -153,6 +186,25 @@ const GachaScene: React.FC<GachaSceneProps> = ({
       });
     });
 
+    // 邊界檢查 - 防止球飛出畫面外
+    Events.on(engine, 'afterUpdate', () => {
+      ballsRef.current.forEach(body => {
+        const pos = body.position;
+        const margin = 100;
+        
+        // 如果球超出邊界太遠，重置到畫面中央上方
+        if (pos.x < -margin || pos.x > width + margin || 
+            pos.y < -height * 2 || pos.y > height + margin) {
+          Matter.Body.setPosition(body, {
+            x: width / 2 + (Math.random() - 0.5) * width * 0.5,
+            y: -50
+          });
+          Matter.Body.setVelocity(body, { x: 0, y: 0 });
+          Matter.Body.setAngularVelocity(body, 0);
+        }
+      });
+    });
+
     Render.run(render);
     const runner = Runner.create();
     runnerRef.current = runner;
@@ -184,14 +236,15 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     const newBalls: Matter.Body[] = [];
     const ballRadius = Math.min(width, height) * 0.08; 
 
-    currentItems.forEach((item) => {
-      const x = Math.random() * (width - 100) + 50;
-      const y = -Math.random() * 500 - 50; 
+    currentItems.forEach((item, index) => {
+      // 在天花板下方生成，錯開時間避免重疊
+      const x = Math.random() * (width - ballRadius * 4) + ballRadius * 2;
+      const y = -ballRadius * 2 - (index * ballRadius * 0.5) - Math.random() * height * 0.3; 
       
       const ball = Matter.Bodies.circle(x, y, ballRadius, {
-        restitution: 0.9,
-        friction: 0.005,
-        frictionAir: 0.001,
+        restitution: 0.7,  // 降低彈性
+        friction: 0.1,
+        frictionAir: 0.005,  // 增加空氣阻力
         label: 'Ball',
         render: {
           visible: false,
@@ -213,12 +266,12 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     if (triggerShake === 0 || !engineRef.current) return;
     
     ballsRef.current.forEach(body => {
-      const forceMagnitude = 0.05 * body.mass;
+      const forceMagnitude = 0.03 * body.mass;  // 降低力道
       Matter.Body.applyForce(body, body.position, {
-        x: (Math.random() - 0.5) * forceMagnitude * 3,
-        y: -forceMagnitude * 2 
+        x: (Math.random() - 0.5) * forceMagnitude * 2,
+        y: -forceMagnitude * 1.5  // 降低向上力道
       });
-      Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.5);
+      Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.3);
     });
   }, [triggerShake]);
 
