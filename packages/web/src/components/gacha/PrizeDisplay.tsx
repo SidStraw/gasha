@@ -1,4 +1,4 @@
-import React from 'react';
+import { motion } from 'framer-motion';
 import { X, Sparkles, Trophy } from 'lucide-react';
 import type { GachaItem } from '@gasha/shared';
 
@@ -11,63 +11,117 @@ interface PrizeDisplayProps {
 const PrizeDisplay: React.FC<PrizeDisplayProps> = ({ winner, isLoading, onClose }) => {
   if (!winner && !isLoading) return null;
 
-  // 如果有 winner 就直接顯示結果，不管 isLoading 狀態
   const showWinner = winner !== null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="relative bg-[#FDFBF7] border-4 border-[#8B4513] rounded-3xl p-8 max-w-sm w-[90%] shadow-2xl transform scale-100 transition-all">
+    <motion.div 
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      {/* Backdrop */}
+      <motion.div 
+        className="absolute inset-0 bg-gasha-bg/90 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      />
+      
+      {/* Content */}
+      <motion.div 
+        className="relative bg-gasha-bg border-4 border-gasha-brown rounded-3xl p-8 max-w-sm w-[90%] shadow-2xl"
+        initial={{ scale: 0.8, opacity: 0, y: 50 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.8, opacity: 0, y: 50 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+      >
         
         {/* Close Button */}
         <button 
           onClick={onClose}
-          className="absolute -top-4 -right-4 bg-[#E74C3C] text-white p-2 rounded-full border-4 border-[#8B4513] hover:scale-110 transition-transform shadow-md"
+          className="absolute -top-4 -right-4 bg-gasha-red text-white p-2 rounded-full border-4 border-gasha-brown hover:scale-110 transition-transform shadow-md"
         >
           <X size={24} strokeWidth={3} />
         </button>
 
         {!showWinner && isLoading ? (
           <div className="flex flex-col items-center justify-center py-12 space-y-6">
-            <div className="w-16 h-16 border-4 border-[#8B4513] border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-[#8B4513] font-bold text-xl animate-pulse">抽選中...</p>
-            <p className="text-[#8B4513]/60 text-sm">正在選出幸運兒...</p>
+            <div className="gasha-spinner w-16 h-16"></div>
+            <p className="text-gasha-brown font-bold text-xl animate-pulse font-display">抽選中...</p>
+            <p className="text-gasha-brown-light text-sm">正在選出幸運兒...</p>
           </div>
         ) : showWinner ? (
           <div className="flex flex-col items-center text-center space-y-4">
             {/* Winner Badge */}
-            <div className="px-4 py-1 rounded-full border-2 border-[#8B4513] text-sm font-black uppercase tracking-wider bg-yellow-400 text-yellow-900">
+            <div className="px-4 py-1 rounded-full border-2 border-gasha-brown text-sm font-black uppercase tracking-wider bg-gasha-yellow text-gasha-brown-dark font-display">
               🎉 恭喜中獎！
             </div>
 
-            {/* Visual Icon */}
-            <div 
-                className="w-32 h-32 rounded-full border-4 border-[#8B4513] flex items-center justify-center shadow-inner mb-2"
-                style={{ backgroundColor: winner.color }}
+            {/* 扭蛋球樣式 - GACHAGO 風格 */}
+            <motion.div 
+              className="gacha-ball w-36 h-36 flex items-center justify-center shadow-lg"
+              style={{ '--ball-color': winner.color } as React.CSSProperties}
+              initial={{ y: -300, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ type: 'spring', damping: 15, stiffness: 200, delay: 0.1 }}
             >
-                <div className="bg-white/80 p-4 rounded-2xl">
-                    <Trophy size={48} className="text-[#8B4513]"/>
-                </div>
-            </div>
+              <motion.div 
+                className="bg-white/80 p-4 rounded-2xl"
+                animate={{ rotate: [-10, 10, -10] }}
+                transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+              >
+                <Trophy size={48} className="text-gasha-brown" />
+              </motion.div>
+            </motion.div>
 
-            <h2 className="text-2xl font-black text-[#8B4513] leading-tight">{winner.label}</h2>
+            {/* 獲勝者名稱 */}
+            <motion.h2 
+              className="text-2xl font-black text-gasha-brown-dark leading-tight font-display"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              {winner.label}
+            </motion.h2>
             
+            {/* 獎品說明 */}
             {winner.prize && (
-              <div className="bg-[#8B4513]/10 p-4 rounded-xl w-full border-2 border-[#8B4513]/20">
-                <p className="text-[#6D4C41] font-bold text-lg italic leading-snug">
+              <motion.div 
+                className="bg-gasha-brown/10 p-4 rounded-xl w-full border-2 border-gasha-brown/20"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+              >
+                <p className="text-gasha-brown-dark font-bold text-lg italic leading-snug">
                   "{winner.prize}"
                 </p>
-              </div>
+              </motion.div>
             )}
 
-            <div className="pt-2 flex items-center gap-2 text-[#8B4513]/60 text-sm font-bold">
+            {/* 確認按鈕 */}
+            <motion.button
+              onClick={onClose}
+              className="mt-2 px-8 py-3 bg-gasha-red border-4 border-gasha-brown rounded-full text-white font-bold text-lg shadow-lg hover:scale-105 active:scale-95 transition-transform"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              好耶！
+            </motion.button>
+
+            {/* 底部裝飾 */}
+            <div className="pt-2 flex items-center gap-2 text-gasha-brown-light text-sm font-bold">
                <Sparkles size={16} />
                <span>Gasha 轉蛋機</span>
                <Sparkles size={16} />
             </div>
           </div>
         ) : null}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

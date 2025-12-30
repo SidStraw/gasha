@@ -1,11 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  font-family: 'Nunito', Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  /* GACHAGO! 色彩變數 */
+  --gasha-bg: #f6f3eb;
+  --gasha-brown: #725349;
+  --gasha-brown-dark: #6f534a;
+  --gasha-brown-light: #a3948c;
+  --gasha-red: #e05a47;
+  --gasha-yellow: #f2c94c;
+  --gasha-blue: #4d9bea;
+  --gasha-green: #5fb376;
+  --gasha-orange: #eaa14d;
+  
+  font-family: 'Noto Sans TC', 'Nunito', Inter, system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 }
@@ -23,23 +32,64 @@ html, body, #root {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
-/* Gashapon UI Animation Keyframes */
+/* ===== GACHAGO! 動畫系統 ===== */
+
+/* 淡入動畫 */
 @keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .animate-in {
   animation: fade-in 0.3s ease-out;
 }
 
-/* Custom scrollbar hide utility */
+/* 扭蛋球掉落動畫 */
+@keyframes sphere-enter {
+  0% { 
+    opacity: 0; 
+    transform: translateY(-300px); 
+  }
+  100% { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+/* 扭蛋球搖擺動畫 */
+@keyframes sway {
+  0%, 100% { transform: rotate(-10deg); }
+  50% { transform: rotate(10deg); }
+}
+
+/* 載入 Spinner */
+@keyframes gasha-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.gasha-spinner {
+  border: 5px solid var(--gasha-red);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: gasha-spin 1s linear infinite;
+}
+
+/* ===== UI 工具類 ===== */
+
+/* 安全區域適配 */
+.pb-safe-or-5 {
+  padding-bottom: max(env(safe-area-inset-bottom), 1.25rem);
+}
+
+.pt-safe-or-5 {
+  padding-top: max(env(safe-area-inset-top), 1.25rem);
+}
+
+/* 自訂滾動條隱藏 */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -47,4 +97,28 @@ body {
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* 扭蛋球 CSS 樣式 */
+.gacha-ball {
+  background: linear-gradient(0deg, var(--ball-color, #e05a47) 50%, #fff 50%);
+  border: 7px solid var(--gasha-brown);
+  border-radius: 50%;
+}
+
+.gacha-ball-animated {
+  animation: sphere-enter 0.5s ease-out forwards, sway 2s ease-in-out 0.5s infinite;
+}
+
+/* 結果遮罩 */
+.result-overlay {
+  pointer-events: auto;
+  background: rgba(246, 243, 235, 0.9);
+  transition: opacity 0.2s, visibility 0s linear 0.2s;
+}
+
+.result-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.2s;
 }
