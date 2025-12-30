@@ -17,6 +17,8 @@
     "@react-three/fiber": "^8.17.12",
     "@react-three/rapier": "^1.5.0",
     "framer-motion": "^11.16.1",
+    "lucide-react": "^0.562.0",
+    "matter-js": "^0.20.0",
     "nanoid": "^5.0.9",
     "partysocket": "^1.0.3",
     "react": "^18.3.1",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@types/matter-js": "^0.20.2",
     "@types/node": "^25.0.3",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
