@@ -4,7 +4,7 @@ import { ChevronLeft } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGachaSocket } from '@/hooks/useGachaSocket'
 import { useGachaStore } from '@/stores/gachaStore'
-import { GachaScene } from '@/components/gacha'
+import { PhysicsPool } from '@/components/three'
 import { SettingsModal, AlertDialog } from '@/components/ui'
 import type { GachaItem, WinnerRecord } from '@gasha/shared'
 
@@ -32,8 +32,6 @@ function OverlayContent({ roomId }: OverlayContentProps) {
   const [showPrize, setShowPrize] = useState(false)
   const [history, setHistory] = useState<WinnerRecord[]>([])
   const [selectedBall, setSelectedBall] = useState<GachaItem | null>(null)
-  const [shakeTrigger, setShakeTrigger] = useState(0)
-  const [resetTrigger, setResetTrigger] = useState(0)
 
   const winner = useMemo(() => {
     if (selectedBall) return selectedBall
@@ -46,15 +44,6 @@ function OverlayContent({ roomId }: OverlayContentProps) {
       setShowPrize(true)
     }
   }, [phase])
-
-  // 監聽 shake 事件
-  useEffect(() => {
-    const handleShake = () => {
-      setShakeTrigger(prev => prev + 1)
-    }
-    window.addEventListener('gasha:shake', handleShake)
-    return () => window.removeEventListener('gasha:shake', handleShake)
-  }, [])
 
   const handleBallClick = useCallback((item: GachaItem) => {
     if (phase !== 'IDLE') return
@@ -82,7 +71,6 @@ function OverlayContent({ roomId }: OverlayContentProps) {
   }, [selectedBall, items, setItems, syncItems, setPhase, setWinnerId, setGamePhase])
 
   const handleShake = useCallback(() => {
-    setShakeTrigger(prev => prev + 1)
     triggerShake(8)
   }, [triggerShake])
 
@@ -91,7 +79,6 @@ function OverlayContent({ roomId }: OverlayContentProps) {
   }, [])
 
   const confirmReset = useCallback(() => {
-    setResetTrigger(prev => prev + 1)
     resetRoom()
     setShowResetDialog(false)
     setSelectedBall(null)
@@ -154,13 +141,13 @@ function OverlayContent({ roomId }: OverlayContentProps) {
         </h1>
       </motion.div>
 
-      {/* 2D 物理場景 (Matter.js) */}
+      {/* 3D 物理場景 (Three.js + Rapier) */}
       <div className="absolute inset-0 z-0">
-        <GachaScene 
+        <PhysicsPool 
           items={items}
+          selectedId={selectedBall?.id || winnerId}
+          phase={phase}
           onBallClick={handleBallClick}
-          triggerShake={shakeTrigger}
-          triggerReset={resetTrigger}
         />
       </div>
 
@@ -291,70 +278,121 @@ function GachaButton({ onClick, variant, label, disabled }: GachaButtonProps) {
   )
 }
 
-// GACHAGO 風格結果顯示
+// GACHAGO 風格結果顯示 - bounceInDown 動畫
 interface GachaResultOverlayProps {
   winner: GachaItem
   onClose: () => void
 }
 
 function GachaResultOverlay({ winner, onClose }: GachaResultOverlayProps) {
+  // bounceInDown 動畫關鍵幀
+  const bounceInDown = {
+    initial: { 
+      opacity: 0, 
+      y: -500,
+      scale: 0.8,
+    },
+    animate: { 
+      opacity: 1, 
+      y: 0,
+      scale: 1,
+      transition: {
+        type: 'spring',
+        damping: 12,
+        stiffness: 100,
+        mass: 1,
+      }
+    },
+    exit: {
+      opacity: 0,
+      y: -100,
+      scale: 0.8,
+      transition: { duration: 0.2 }
+    }
+  }
+
   return (
     <motion.div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
     >
-      {/* 半透明背景 */}
-      <div className="absolute inset-0 bg-gasha-bg/80" />
+      {/* 半透明背景 - 背景球體會變淡 */}
+      <motion.div 
+        className="absolute inset-0 bg-gasha-bg/85 backdrop-blur-[1px]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      />
       
-      {/* 中央內容 */}
+      {/* 中央內容 - bounceInDown */}
       <motion.div 
         className="relative flex flex-col items-center"
-        initial={{ scale: 0.5, y: -100 }}
-        animate={{ scale: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+        variants={bounceInDown}
+        initial="initial"
+        animate="animate"
+        exit="exit"
       >
-        {/* 扭蛋球 - GACHAGO 風格 */}
+        {/* 扭蛋球 */}
         <motion.div 
-          className="relative w-32 h-32 sm:w-40 sm:h-40"
-          animate={{ rotate: [0, -5, 5, -5, 0] }}
-          transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+          className="relative w-28 h-28 sm:w-36 sm:h-36"
+          animate={{ 
+            rotate: [0, -3, 3, -3, 0],
+          }}
+          transition={{ 
+            repeat: Infinity, 
+            duration: 2.5, 
+            ease: 'easeInOut',
+            delay: 0.5,
+          }}
         >
           {/* 陰影 */}
-          <div 
-            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-24 h-6 sm:w-32 sm:h-8 rounded-full"
-            style={{ backgroundColor: 'rgba(200, 180, 160, 0.5)' }}
+          <motion.div 
+            className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full"
+            style={{ 
+              backgroundColor: 'rgba(200, 175, 150, 0.5)',
+              width: '80%',
+              height: '20%',
+            }}
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.4, duration: 0.3 }}
           />
-          {/* 球體 */}
-          <svg viewBox="0 0 100 100" className="w-full h-full">
-            {/* 上半白色 */}
-            <path 
-              d="M 5 50 A 45 45 0 0 1 95 50" 
-              fill="#FFFFFF" 
-              stroke="#725349" 
-              strokeWidth="5"
-            />
+          
+          {/* 球體 SVG */}
+          <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg">
+            {/* 白色背景 */}
+            <circle cx="50" cy="50" r="44" fill="#FFFFFF" />
             {/* 下半彩色 */}
             <path 
-              d="M 5 50 A 45 45 0 0 0 95 50" 
-              fill={winner.color} 
+              d="M 6 50 A 44 44 0 0 0 94 50 L 94 50 A 44 44 0 0 1 6 50" 
+              fill={winner.color}
+            />
+            {/* 外框 */}
+            <circle 
+              cx="50" cy="50" r="44" 
+              fill="none" 
               stroke="#725349" 
               strokeWidth="5"
             />
             {/* 中線 */}
-            <line x1="5" y1="50" x2="95" y2="50" stroke="#725349" strokeWidth="3" />
-            {/* 外框 */}
-            <circle cx="50" cy="50" r="45" fill="none" stroke="#725349" strokeWidth="5" />
+            <line 
+              x1="6" y1="50" x2="94" y2="50" 
+              stroke="#725349" 
+              strokeWidth="3"
+            />
           </svg>
         </motion.div>
         
         {/* 名稱 */}
         <motion.h2 
-          className="mt-4 text-2xl sm:text-3xl font-bold text-gasha-brown-dark font-display"
-          initial={{ opacity: 0, y: 20 }}
+          className="mt-3 text-2xl sm:text-3xl font-bold text-gasha-brown-dark"
+          style={{ fontFamily: "'Noto Sans TC', sans-serif" }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.35, duration: 0.3 }}
         >
           {winner.label}
         </motion.h2>
@@ -362,10 +400,10 @@ function GachaResultOverlay({ winner, onClose }: GachaResultOverlayProps) {
         {/* 好耶按鈕 */}
         <motion.button
           onClick={onClose}
-          className="mt-6 px-10 py-3 bg-gasha-red border-4 border-gasha-brown rounded-full text-white font-bold text-lg shadow-lg"
-          initial={{ opacity: 0, y: 20 }}
+          className="mt-5 px-10 py-3 bg-gasha-red border-4 border-gasha-brown rounded-full text-white font-bold text-lg shadow-md"
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.5, duration: 0.3 }}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >

@@ -9,6 +9,68 @@ interface GachaSceneProps {
   triggerReset: number;
 }
 
+// 3D 向量類型
+interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+// 四元數類型 (用於 3D 旋轉)
+interface Quaternion {
+  w: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+// 球體擴展數據
+interface BallData {
+  id: string;
+  color: string;
+  rotation: Quaternion;      // 3D 旋轉四元數
+  angularVelocity: Vec3;     // 3D 角速度
+  height: number;            // 離地高度 (用於陰影計算)
+  isExiting: boolean;        // 是否正在退場
+  exitProgress: number;      // 退場動畫進度
+}
+
+// 四元數操作
+const Quat = {
+  identity: (): Quaternion => ({ w: 1, x: 0, y: 0, z: 0 }),
+  
+  fromAxisAngle: (axis: Vec3, angle: number): Quaternion => {
+    const halfAngle = angle / 2;
+    const s = Math.sin(halfAngle);
+    return {
+      w: Math.cos(halfAngle),
+      x: axis.x * s,
+      y: axis.y * s,
+      z: axis.z * s,
+    };
+  },
+  
+  multiply: (a: Quaternion, b: Quaternion): Quaternion => ({
+    w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+    x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+    y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+    z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+  }),
+  
+  normalize: (q: Quaternion): Quaternion => {
+    const len = Math.sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
+    return { w: q.w / len, x: q.x / len, y: q.y / len, z: q.z / len };
+  },
+  
+  // 將四元數轉換為旋轉後的"上"向量 (用於確定彩色區域朝向)
+  rotateVector: (q: Quaternion, v: Vec3): Vec3 => {
+    const qv = { w: 0, x: v.x, y: v.y, z: v.z };
+    const qConj = { w: q.w, x: -q.x, y: -q.y, z: -q.z };
+    const result = Quat.multiply(Quat.multiply(q, qv), qConj);
+    return { x: result.x, y: result.y, z: result.z };
+  },
+};
+
 const GachaScene: React.FC<GachaSceneProps> = ({ 
   items,
   onBallClick, 
@@ -20,7 +82,9 @@ const GachaScene: React.FC<GachaSceneProps> = ({
   const renderRef = useRef<Matter.Render | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
   const ballsRef = useRef<Matter.Body[]>([]);
+  const ballDataRef = useRef<Map<string, BallData>>(new Map());
   const itemsMapRef = useRef<Map<string, GachaItem>>(new Map());
+  const lastTimeRef = useRef<number>(Date.now());
 
   // 更新 items map
   useEffect(() => {
@@ -47,6 +111,9 @@ const GachaScene: React.FC<GachaSceneProps> = ({
 
     const width = sceneRef.current.clientWidth;
     const height = sceneRef.current.clientHeight;
+    
+    // 地面高度 (球在這個 Y 值以下時，陰影最大)
+    const groundY = height - 100;
 
     const render = Render.create({
       element: sceneRef.current,
@@ -66,10 +133,10 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     const wallOptions = { 
       isStatic: true, 
       render: { visible: false },
-      restitution: 0.5
+      restitution: 0.6
     };
     
-    const ground = Bodies.rectangle(width / 2, height + wallThickness / 2 - 20, width + wallThickness * 2, wallThickness, wallOptions);
+    const ground = Bodies.rectangle(width / 2, groundY + wallThickness / 2, width + wallThickness * 2, wallThickness, wallOptions);
     const leftWall = Bodies.rectangle(-wallThickness / 2, height / 2, wallThickness, height * 3, wallOptions);
     const rightWall = Bodies.rectangle(width + wallThickness / 2, height / 2, wallThickness, height * 3, wallOptions);
     const ceiling = Bodies.rectangle(width / 2, -height - wallThickness / 2, width + wallThickness * 2, wallThickness, wallOptions);
@@ -91,7 +158,7 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     let clickedBody: Matter.Body | null = null;
 
     Events.on(mouseConstraint, 'mousedown', (event) => {
-      if (mouseConstraint.body) {
+      if (mouseConstraint.body && mouseConstraint.body.label === 'Ball') {
         startPoint = { ...event.mouse.position };
         clickedBody = mouseConstraint.body;
       }
@@ -102,11 +169,20 @@ const GachaScene: React.FC<GachaSceneProps> = ({
         const endPoint = event.mouse.position;
         const distance = Vector.magnitude(Vector.sub(endPoint, startPoint));
         
-        if (distance < 10) {
+        if (distance < 15) {
           const id = (clickedBody as { customId?: string }).customId || '';
           const item = itemsMapRef.current.get(id);
-          if (item) {
-            onBallClick(item);
+          const ballData = ballDataRef.current.get(id);
+          
+          if (item && ballData && !ballData.isExiting) {
+            // 開始退場動畫
+            ballData.isExiting = true;
+            ballData.exitProgress = 0;
+            
+            // 延遲觸發回調
+            setTimeout(() => {
+              onBallClick(item);
+            }, 300);
           }
         }
       }
@@ -115,90 +191,184 @@ const GachaScene: React.FC<GachaSceneProps> = ({
 
     Composite.add(engine.world, mouseConstraint);
 
-    // GACHAGO Style Rendering
+    // 渲染 - 偽 3D 扭蛋球
     Events.on(render, 'afterRender', () => {
       const context = render.context;
-      const bodies = Composite.allBodies(engine.world);
+      const now = Date.now();
+      const deltaTime = (now - lastTimeRef.current) / 1000;
+      lastTimeRef.current = now;
       
-      bodies.forEach((body) => {
-        if (body.label === 'Ball') {
-          const { x, y } = body.position;
-          const radius = (body.circleRadius || 40); 
-          const angle = body.angle;
-          const color = (body.render as { customColor?: string }).customColor || '#e05a47';
-
-          context.save();
+      // 按 Y 座標排序 (遠的先畫)
+      const sortedBalls = [...ballsRef.current].sort((a, b) => a.position.y - b.position.y);
+      
+      sortedBalls.forEach((body) => {
+        if (body.label !== 'Ball') return;
+        
+        const id = (body as { customId?: string }).customId || '';
+        const ballData = ballDataRef.current.get(id);
+        if (!ballData) return;
+        
+        const { x, y } = body.position;
+        const radius = (body.circleRadius || 50);
+        const velocity = body.velocity;
+        
+        // 計算離地高度 (用於陰影)
+        const distanceFromGround = Math.max(0, groundY - y - radius);
+        ballData.height = distanceFromGround;
+        
+        // 根據 2D 速度更新 3D 角速度 (球在地面滾動)
+        const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+        if (speed > 0.5) {
+          // 滾動方向垂直於移動方向
+          const rollAxis: Vec3 = { 
+            x: -velocity.y / speed, 
+            y: velocity.x / speed, 
+            z: 0 
+          };
+          ballData.angularVelocity = {
+            x: rollAxis.x * speed * 0.02,
+            y: rollAxis.y * speed * 0.02,
+            z: rollAxis.z * speed * 0.02,
+          };
+        } else {
+          // 緩慢衰減
+          ballData.angularVelocity.x *= 0.98;
+          ballData.angularVelocity.y *= 0.98;
+          ballData.angularVelocity.z *= 0.98;
           
-          // 繪製橢圓陰影 (GACHAGO 風格)
-          context.beginPath();
-          context.fillStyle = 'rgba(200, 180, 160, 0.4)';
-          context.ellipse(x, y + radius * 0.9, radius * 0.8, radius * 0.25, 0, 0, Math.PI * 2);
-          context.fill();
-
-          context.translate(x, y);
-          
-          // 球體主體 - 使用漸層模擬 3D 滾動效果
-          // 根據角度計算分界線位置
-          const splitAngle = angle % (Math.PI * 2);
-          
-          // 繪製完整圓形背景 (白色)
-          context.beginPath();
-          context.fillStyle = '#FFFFFF';
-          context.arc(0, 0, radius, 0, Math.PI * 2);
-          context.fill();
-          
-          // 繪製彩色部分 (下半，根據旋轉角度)
+          // 加一點隨機微小旋轉
+          if (Math.random() < 0.02) {
+            ballData.angularVelocity.x += (Math.random() - 0.5) * 0.01;
+            ballData.angularVelocity.y += (Math.random() - 0.5) * 0.01;
+          }
+        }
+        
+        // 更新四元數旋轉
+        const angSpeed = Math.sqrt(
+          ballData.angularVelocity.x ** 2 + 
+          ballData.angularVelocity.y ** 2 + 
+          ballData.angularVelocity.z ** 2
+        );
+        
+        if (angSpeed > 0.0001) {
+          const axis: Vec3 = {
+            x: ballData.angularVelocity.x / angSpeed,
+            y: ballData.angularVelocity.y / angSpeed,
+            z: ballData.angularVelocity.z / angSpeed,
+          };
+          const deltaRotation = Quat.fromAxisAngle(axis, angSpeed * deltaTime * 60);
+          ballData.rotation = Quat.normalize(Quat.multiply(deltaRotation, ballData.rotation));
+        }
+        
+        // 計算"上"向量在旋轉後的方向
+        const upVector = Quat.rotateVector(ballData.rotation, { x: 0, y: 0, z: 1 });
+        
+        // 處理退場動畫
+        let scale = 1;
+        let alpha = 1;
+        if (ballData.isExiting) {
+          ballData.exitProgress += deltaTime * 3;
+          scale = Math.max(0, 1 - ballData.exitProgress);
+          alpha = Math.max(0, 1 - ballData.exitProgress);
+          if (ballData.exitProgress >= 1) {
+            return; // 不繪製已完全退場的球
+          }
+        }
+        
+        context.save();
+        context.globalAlpha = alpha;
+        
+        // 繪製陰影 (在地面上)
+        const shadowY = groundY;
+        const shadowScale = Math.max(0.3, 1 - distanceFromGround / 300);
+        const shadowAlpha = Math.max(0.1, 0.4 * shadowScale);
+        
+        context.beginPath();
+        context.fillStyle = `rgba(200, 175, 150, ${shadowAlpha})`;
+        context.ellipse(
+          x, 
+          shadowY, 
+          radius * 0.9 * shadowScale * scale, 
+          radius * 0.3 * shadowScale * scale, 
+          0, 0, Math.PI * 2
+        );
+        context.fill();
+        
+        // 繪製球體
+        const drawRadius = radius * scale;
+        context.translate(x, y);
+        
+        // 計算彩色區域的角度 (根據 upVector 的 z 分量)
+        // upVector.z > 0 表示彩色面朝上，< 0 表示白色面朝上
+        // upVector.x, upVector.y 決定傾斜方向
+        
+        // 簡化：使用 upVector.z 來決定彩色/白色的比例
+        // 使用 atan2(upVector.y, upVector.x) 來決定分界線角度
+        const splitAngle = Math.atan2(upVector.y, upVector.x) + Math.PI / 2;
+        const colorRatio = (upVector.z + 1) / 2; // 0 到 1，表示彩色面可見程度
+        
+        // 繪製白色底層
+        context.beginPath();
+        context.fillStyle = '#FFFFFF';
+        context.arc(0, 0, drawRadius, 0, Math.PI * 2);
+        context.fill();
+        
+        // 繪製彩色部分 (根據旋轉)
+        if (colorRatio > 0.02) {
           context.save();
           context.rotate(splitAngle);
           
-          // 下半彩色
+          // 彩色半球的可見範圍
+          const visibleAngle = Math.PI * Math.min(1, colorRatio);
+          
           context.beginPath();
-          context.fillStyle = color;
-          context.arc(0, 0, radius - 2, 0, Math.PI, false);
+          context.fillStyle = ballData.color;
+          context.moveTo(0, 0);
+          context.arc(0, 0, drawRadius - 2, -visibleAngle / 2, visibleAngle / 2);
+          context.closePath();
           context.fill();
           
-          context.restore();
-
-          // 繪製邊框 (粗棕色)
-          context.beginPath();
-          context.strokeStyle = '#725349';
-          context.lineWidth = Math.max(4, radius * 0.08);
-          context.arc(0, 0, radius, 0, Math.PI * 2);
-          context.stroke();
-          
-          // 繪製中線 (分隔上下半球)
-          context.save();
-          context.rotate(splitAngle);
-          context.beginPath();
-          context.strokeStyle = '#725349';
-          context.lineWidth = Math.max(2, radius * 0.04);
-          context.moveTo(-radius, 0);
-          context.lineTo(radius, 0);
-          context.stroke();
-          context.restore();
-
           context.restore();
         }
+        
+        // 繪製邊框
+        context.beginPath();
+        context.strokeStyle = '#725349';
+        context.lineWidth = Math.max(3, drawRadius * 0.07);
+        context.arc(0, 0, drawRadius, 0, Math.PI * 2);
+        context.stroke();
+        
+        // 繪製分界線 (如果兩種顏色都可見)
+        if (colorRatio > 0.05 && colorRatio < 0.95) {
+          context.save();
+          context.rotate(splitAngle);
+          
+          context.beginPath();
+          context.strokeStyle = '#725349';
+          context.lineWidth = Math.max(2, drawRadius * 0.04);
+          
+          // 繪製弧形分界線
+          const arcRadius = drawRadius * 0.95;
+          context.arc(0, 0, arcRadius, -0.1, 0.1);
+          context.stroke();
+          
+          context.restore();
+        }
+        
+        context.restore();
       });
     });
 
-    // 持續緩慢滾動效果
+    // 邊界檢查
     Events.on(engine, 'afterUpdate', () => {
       ballsRef.current.forEach(body => {
-        // 如果球幾乎靜止，施加微小的角速度
-        const angularVelocity = body.angularVelocity;
-        if (Math.abs(angularVelocity) < 0.01) {
-          Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.02);
-        }
-        
-        // 邊界檢查
         const pos = body.position;
-        const margin = 100;
+        const margin = 150;
         if (pos.x < -margin || pos.x > width + margin || 
             pos.y < -height * 2 || pos.y > height + margin) {
           Matter.Body.setPosition(body, {
             x: width / 2 + (Math.random() - 0.5) * width * 0.5,
-            y: -50
+            y: -100
           });
           Matter.Body.setVelocity(body, { x: 0, y: 0 });
         }
@@ -228,32 +398,43 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     
     Matter.Composite.remove(engine.world, ballsRef.current);
     ballsRef.current = [];
+    ballDataRef.current.clear();
     
     addBallsFromItems(engine, items, sceneRef.current.clientWidth, sceneRef.current.clientHeight);
   }, [items]);
 
   const addBallsFromItems = useCallback((engine: Matter.Engine, currentItems: GachaItem[], width: number, height: number) => {
     const newBalls: Matter.Body[] = [];
-    // 較大的球體
-    const ballRadius = Math.min(width, height) * 0.1;
+    const ballRadius = Math.min(width, height) * 0.09;
 
     currentItems.forEach((item, index) => {
-      const x = Math.random() * (width - ballRadius * 4) + ballRadius * 2;
-      const y = -ballRadius * 2 - (index * ballRadius * 0.8) - Math.random() * height * 0.2;
+      const x = width * 0.2 + Math.random() * width * 0.6;
+      const y = -ballRadius * 2 - (index * ballRadius) - Math.random() * 100;
       
       const ball = Matter.Bodies.circle(x, y, ballRadius, {
-        restitution: 0.5,
-        friction: 0.05,
-        frictionAir: 0.002,
+        restitution: 0.6,
+        friction: 0.1,
+        frictionAir: 0.01,
         label: 'Ball',
         render: { visible: false }
       });
       
-      (ball.render as { customColor?: string }).customColor = item.color;
       (ball as { customId?: string }).customId = item.id;
       
-      // 初始角速度
-      Matter.Body.setAngularVelocity(ball, (Math.random() - 0.5) * 0.1);
+      // 初始化 3D 旋轉數據
+      const ballData: BallData = {
+        id: item.id,
+        color: item.color,
+        rotation: Quat.fromAxisAngle(
+          { x: Math.random(), y: Math.random(), z: Math.random() },
+          Math.random() * Math.PI * 2
+        ),
+        angularVelocity: { x: 0, y: 0, z: 0 },
+        height: 0,
+        isExiting: false,
+        exitProgress: 0,
+      };
+      ballDataRef.current.set(item.id, ballData);
       
       newBalls.push(ball);
     });
@@ -267,12 +448,20 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     if (triggerShake === 0 || !engineRef.current) return;
     
     ballsRef.current.forEach(body => {
-      const forceMagnitude = 0.05 * body.mass;
+      const forceMagnitude = 0.08 * body.mass;
       Matter.Body.applyForce(body, body.position, {
         x: (Math.random() - 0.5) * forceMagnitude * 2,
-        y: -forceMagnitude * 2
+        y: -forceMagnitude * 2.5
       });
-      Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.5);
+      
+      // 增加 3D 角速度
+      const id = (body as { customId?: string }).customId || '';
+      const ballData = ballDataRef.current.get(id);
+      if (ballData) {
+        ballData.angularVelocity.x += (Math.random() - 0.5) * 0.3;
+        ballData.angularVelocity.y += (Math.random() - 0.5) * 0.3;
+        ballData.angularVelocity.z += (Math.random() - 0.5) * 0.1;
+      }
     });
   }, [triggerShake]);
 
@@ -283,6 +472,7 @@ const GachaScene: React.FC<GachaSceneProps> = ({
     
     Matter.Composite.remove(engine.world, ballsRef.current);
     ballsRef.current = [];
+    ballDataRef.current.clear();
     addBallsFromItems(engine, items, sceneRef.current.clientWidth, sceneRef.current.clientHeight);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerReset]);
